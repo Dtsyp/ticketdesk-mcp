@@ -18,23 +18,39 @@ HTTP app instead (or use uvicorn, as the container does).
     docker compose up -d
     curl -H "Authorization: Bearer <token>" http://localhost:8000/mcp
 
+The `seed` one-shot copies `data/` into the volume on first start and hands it
+to the app uid; the image itself carries no data.
+
 Over HTTP a **valid** bearer token is required; requests without one get 401.
-`GET /healthz` and `/readyz` are unauthenticated for probes.
+`GET /healthz` and `/readyz` are unauthenticated for probes. The MCP endpoint
+is `/mcp` (trailing slash optional).
 
 ## Design decisions
 
 - JWT is verified against Keycloak JWKS with RS256 only, and `exp`/`iss`/`aud`
   enforced (see `auth.py`). We do not trust the token just because Keycloak
   issued it - Keycloak is not in the request path.
-- ACLs are applied everywhere a ticket leaves the server: `search_tickets`,
-  `get_ticket`, `get_attachment`, the `ticket://` resource and the
-  `summarize_ticket` prompt.
-- Attachments are served as UTF-8 text; non-text files are refused rather than
-  returned as mojibake.
-- Attachment names are validated against the ticket's declared attachments and
-  cannot traverse out of the data directory.
-- Over HTTP the caller is set by a pure-ASGI auth layer; over stdio it comes
-  from the environment. There is no env-var identity on the HTTP path.
+- `aud` must be `ticketdesk-mcp`, i.e. this service, not the calling client.
+  The realm export carries the audience and group-membership mappers the
+  server relies on; without them tokens have no `groups` and a wrong `aud`.
+- Over HTTP the caller is set per request: the ASGI auth layer verifies the
+  token and puts the principal into the request state, tools read it from the
+  current request. Not from a contextvar - in stateful streamable HTTP the
+  session task keeps the context of the `initialize` request, which would pin
+  the whole session to the first caller.
+- Over stdio identity comes from the environment (read-only by default). There
+  is no env-var identity on the HTTP path.
+- ACLs are applied everywhere a ticket leaves the server: `search_tickets`
+  (inside the scan, before `limit`), `get_ticket`, `get_attachment`, the
+  `ticket://` resource and the `summarize_ticket` prompt. A ticket you cannot
+  read looks like a ticket that does not exist.
+- Attachments are served as UTF-8 text and capped by
+  `TICKETDESK_MAX_ATTACHMENT_BYTES` (1 MiB by default). Binaries and oversized
+  files are refused with a clear error; names are validated against the
+  ticket's declared attachments and cannot traverse out of the data directory.
+- The MCP app is served directly (`server:app`), not mounted into another
+  framework: Starlette does not run lifespans of mounted apps, and the
+  streamable HTTP session manager lives in the lifespan.
 
 ## Tools
 
@@ -46,6 +62,15 @@ Over HTTP a **valid** bearer token is required; requests without one get 401.
 
 Resource: `ticket://{id}`
 Prompt: `summarize_ticket(ticket_id)`
+
+## Tests
+
+    pip install -r requirements-dev.txt
+    pytest -q
+
+`tests/test_http.py` drives the real streamable HTTP transport in-process
+(401s, session handling, per-request identity) with locally minted RS256
+tokens - no Keycloak needed.
 
 ## Not done yet
 

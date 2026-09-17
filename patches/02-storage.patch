@@ -1,10 +1,13 @@
+diff --git a/storage.py b/storage.py
+index aef5671..c7c0bdc 100644
 --- a/storage.py
 +++ b/storage.py
-@@ -1,26 +1,69 @@
+@@ -1,26 +1,85 @@
  import json
 +import os
  import re
 +import threading
++from collections.abc import Callable
 +from datetime import UTC, datetime
  from pathlib import Path
  
@@ -13,16 +16,28 @@
 +_TICKET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 +
 +
++class InvalidName(ValueError):
++    """Ticket id or attachment name failed validation - never a real file."""
++
++
++class UnreadableAttachment(ValueError):
++    """The attachment exists but cannot be served as text (binary or too large)."""
++
++
 +def _utcnow() -> str:
 +    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 +
  
  class TicketStore:
-     def __init__(self, root: Path):
+-    def __init__(self, root: Path):
 -        self.root = Path(root)
++    def __init__(self, root: Path, max_attachment_bytes: int = 1 << 20):
 +        self.root = Path(root).resolve()
          self.tickets_dir = self.root / "tickets"
          self.attachments_dir = self.root / "attachments"
++        # Attachments end up in tool results and prompts; cap them so one large
++        # file cannot blow up memory or the model context.
++        self.max_attachment_bytes = max_attachment_bytes
 +        # Serialises read-modify-write on ticket files within one process. Not a
 +        # cross-process lock - a multi-worker deployment needs a real store.
 +        self._write_lock = threading.Lock()
@@ -31,12 +46,12 @@
 +
 +    def _ticket_path(self, ticket_id: str) -> Path:
 +        if not _TICKET_ID_RE.match(ticket_id):
-+            raise ValueError(f"invalid ticket id: {ticket_id!r}")
++            raise InvalidName(f"invalid ticket id: {ticket_id!r}")
 +        return self.tickets_dir / f"{ticket_id}.json"
 +
 +    def _attachment_path(self, ticket_id: str, filename: str) -> Path:
 +        if not _TICKET_ID_RE.match(ticket_id):
-+            raise ValueError(f"invalid ticket id: {ticket_id!r}")
++            raise InvalidName(f"invalid ticket id: {ticket_id!r}")
 +        if (
 +            filename in ("", ".", "..")
 +            or "/" in filename
@@ -44,11 +59,11 @@
 +            or ".." in filename
 +            or filename != Path(filename).name
 +        ):
-+            raise ValueError(f"invalid attachment name: {filename!r}")
++            raise InvalidName(f"invalid attachment name: {filename!r}")
 +        base = (self.attachments_dir / ticket_id).resolve()
 +        path = (base / filename).resolve()
 +        if path.parent != base:
-+            raise ValueError(f"attachment path escapes base: {filename!r}")
++            raise InvalidName(f"attachment path escapes base: {filename!r}")
 +        return path
 +
 +    # --- reads ---
@@ -63,10 +78,14 @@
              return json.load(f)
  
 -    def search(self, query: str, status=None, assignee=None):
-+    def search(self, query: str, status=None, assignee=None, limit: int = 100):
++    def search(self, query: str, status=None, assignee=None, limit: int = 100,
++               visible: Callable[[dict], bool] | None = None):
 +        # Plain case-insensitive substring match. The previous version compiled
 +        # the query as a regex, which meant a crafted pattern could hang the
 +        # process (ReDoS) and an invalid one raised straight to a 500.
++        # `visible` is the caller's ACL. It runs inside the scan, before `limit`
++        # is counted, so the result is "up to limit tickets you may see" rather
++        # than a truncated scan with the hidden ones removed afterwards.
 +        needle = query.casefold()
          results = []
 -        pattern = re.compile(query)
@@ -77,26 +96,36 @@
                  t = json.load(f)
              if status and t.get("status") != status:
                  continue
-@@ -29,29 +72,57 @@
+@@ -29,29 +88,66 @@ class TicketStore:
              haystack = t.get("subject", "") + " " + " ".join(
                  c.get("body", "") for c in t.get("comments", [])
              )
 -            if pattern.search(haystack):
-+            if needle in haystack.casefold():
-                 results.append(t)
-+                if len(results) >= limit:
-+                    break
+-                results.append(t)
++            if needle not in haystack.casefold():
++                continue
++            if visible is not None and not visible(t):
++                continue
++            results.append(t)
++            if len(results) >= limit:
++                break
          return results
  
 +    def read_attachment(self, ticket_id: str, filename: str) -> str:
 +        path = self._attachment_path(ticket_id, filename)
++        size = path.stat().st_size  # FileNotFoundError if it does not exist
++        if size > self.max_attachment_bytes:
++            raise UnreadableAttachment(
++                f"attachment too large: {filename} "
++                f"({size} bytes, limit {self.max_attachment_bytes})"
++            )
 +        raw = path.read_bytes()
 +        try:
 +            return raw.decode("utf-8")
 +        except UnicodeDecodeError as e:
 +            # Attachments are surfaced as text; refuse binaries loudly rather
 +            # than handing back mojibake the way errors="replace" used to.
-+            raise ValueError(f"attachment is not utf-8 text: {filename}") from e
++            raise UnreadableAttachment(f"attachment is not utf-8 text: {filename}") from e
 +
 +    # --- writes ---
 +

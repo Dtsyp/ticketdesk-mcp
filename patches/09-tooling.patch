@@ -1,0 +1,187 @@
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..8bbb253
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,17 @@
++.git
++.gitignore
++.idea
++.venv
++venv
++__pycache__
++*.pyc
++.pytest_cache
++.ruff_cache
++tests
++data
++keycloak
++.env
++.env.example
++*.md
++docker-compose.yml
++Dockerfile
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..9792944
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,23 @@
++# Copy to .env for local development. Do NOT commit the real .env.
++
++# Keycloak dev admin (local only).
++KEYCLOAK_ADMIN=admin
++KEYCLOAK_ADMIN_PASSWORD=change-me
++
++# Resource server: where to fetch signing keys and what to trust.
++TICKETDESK_JWKS_URL=http://keycloak:8080/realms/ticketdesk/protocol/openid-connect/certs
++TICKETDESK_ISSUER=http://keycloak:8080/realms/ticketdesk
++# Must match the audience mapper in keycloak/realm-export.json: the value names
++# THIS service (the resource server), not the client that calls it.
++TICKETDESK_AUDIENCE=ticketdesk-mcp
++
++# Largest attachment served as text / pasted into the summary prompt (bytes).
++# TICKETDESK_MAX_ATTACHMENT_BYTES=1048576
++
++# stdio transport (Claude Desktop / IDE) identity. Ignored over HTTP.
++# TICKETDESK_USER=alice
++# TICKETDESK_GROUPS=eng
++# TICKETDESK_ROLES=employee
++# TICKETDESK_SCOPES=tickets:read
++
++# TICKETDESK_LOG_LEVEL=INFO
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..5f58cd1
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,19 @@
++# Secrets / local config
++.env
++
++# Python
++__pycache__/
++*.py[cod]
++.venv/
++venv/
++.pytest_cache/
++.ruff_cache/
++.mypy_cache/
++*.egg-info/
++
++# IDE
++.idea/
++.vscode/
++
++# Local ticket writes during dev
++data/**/*.tmp
+diff --git a/.gitlab-ci.yml b/.gitlab-ci.yml
+new file mode 100644
+index 0000000..6cddce4
+--- /dev/null
++++ b/.gitlab-ci.yml
+@@ -0,0 +1,57 @@
++stages:
++  - lint
++  - test
++  - security
++  - build
++
++default:
++  image: python:3.12-slim
++  cache:
++    key: "$CI_COMMIT_REF_SLUG"
++    paths:
++      - .cache/pip
++  before_script:
++    - pip install --no-cache-dir -r requirements-dev.txt
++
++variables:
++  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
++
++lint:
++  stage: lint
++  script:
++    - ruff check .
++
++test:
++  stage: test
++  script:
++    - pytest -q --junitxml=report.xml
++  artifacts:
++    when: always
++    reports:
++      junit: report.xml
++
++bandit:
++  stage: security
++  script:
++    - bandit -r auth.py storage.py server.py
++
++pip-audit:
++  stage: security
++  script:
++    - pip-audit -r requirements.txt
++  # Advisory: a new CVE should surface but not wedge every unrelated pipeline.
++  allow_failure: true
++
++build:
++  stage: build
++  image:
++    name: gcr.io/kaniko-project/executor:v1.23.2-debug
++    entrypoint: [""]
++  before_script: []
++  script:
++    - /kaniko/executor
++      --context "$CI_PROJECT_DIR"
++      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
++      --destination "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
++  rules:
++    - if: '$CI_COMMIT_BRANCH == "main"'
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..71e4cc8
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,17 @@
++[project]
++name = "ticketdesk-mcp"
++version = "0.1.0"
++# Pinned to 3.12 to match the runtime image; mcp/pydantic have no 3.14 wheels
++# yet. Runtime deps live in requirements.txt (source of truth for CI/Docker).
++requires-python = ">=3.12,<3.13"
++
++[tool.pytest.ini_options]
++pythonpath = ["."]
++testpaths = ["tests"]
++
++[tool.ruff]
++target-version = "py312"
++line-length = 100
++
++[tool.ruff.lint]
++select = ["E", "F", "I", "B", "UP"]
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+new file mode 100644
+index 0000000..13e0b60
+--- /dev/null
++++ b/requirements-dev.txt
+@@ -0,0 +1,6 @@
++-r requirements.txt
++pytest==8.3.2
++httpx==0.28.1
++ruff==0.6.9
++bandit==1.7.10
++pip-audit==2.7.3
+diff --git a/requirements.txt b/requirements.txt
+index f1697bb..5843cb3 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,6 +1,5 @@
+ mcp==1.9.4
+-fastapi==0.115.0
++starlette==0.38.6
+ uvicorn[standard]==0.30.6
+ PyJWT==2.10.1
+ cryptography==43.0.3
+-pytest==8.3.2

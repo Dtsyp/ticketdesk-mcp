@@ -12,9 +12,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY auth.py storage.py server.py ./
 
-# Run as an unprivileged user. /data is a mounted volume owned at deploy time.
+# Run as an unprivileged user. /data is created here so a fresh named volume
+# inherits appuser ownership instead of root's.
 RUN useradd --system --uid 10001 --home-dir /app appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /data \
+    && chown -R appuser:appuser /app /data
 USER appuser
 
 ENV TICKETDESK_TRANSPORT=http \

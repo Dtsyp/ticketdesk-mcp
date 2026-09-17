@@ -1,6 +1,8 @@
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 4a75dd0..f748034 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
-@@ -1,29 +1,56 @@
+@@ -1,29 +1,69 @@
  services:
    mcp:
      build: .
@@ -19,7 +21,7 @@
        TICKETDESK_JWKS_URL: http://keycloak:8080/realms/ticketdesk/protocol/openid-connect/certs
        TICKETDESK_ISSUER: http://keycloak:8080/realms/ticketdesk
 -      OPENAI_API_KEY: ${OPENAI_API_KEY}
-+      TICKETDESK_AUDIENCE: assistant-orchestrator
++      TICKETDESK_AUDIENCE: ticketdesk-mcp
      volumes:
 -      - ./data:/data
 -      - /var/run/docker.sock:/var/run/docker.sock
@@ -40,9 +42,22 @@
 +          cpus: "1.0"
 +          memory: 512M
 +    depends_on:
++      seed:
++        condition: service_completed_successfully
 +      keycloak:
 +        condition: service_healthy
 +    restart: unless-stopped
++
++  seed:
++    # One-shot: copies the sample tickets into the named volume on first start
++    # and hands the volume to the app's unprivileged uid. Keeps data and secrets
++    # out of the image while still giving `docker compose up` a working stand.
++    image: busybox:1.36
++    command: sh -c '[ -d /data/tickets ] || cp -r /seed/. /data/; chown -R 10001:10001 /data'
++    volumes:
++      - ./data:/seed:ro
++      - tickets-data:/data
++    restart: "no"
  
    keycloak:
      image: quay.io/keycloak/keycloak:25.0
