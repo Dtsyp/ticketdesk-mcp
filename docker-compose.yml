@@ -1,29 +1,56 @@
 services:
   mcp:
     build: .
+    # No host networking, no privileged, no docker.sock. The app is a plain
+    # HTTP service and needs none of that.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
     environment:
       TICKETDESK_DATA: /data
-      TICKETDESK_USER: alice
-      TICKETDESK_GROUPS: eng
+      TICKETDESK_TRANSPORT: http
       TICKETDESK_JWKS_URL: http://keycloak:8080/realms/ticketdesk/protocol/openid-connect/certs
       TICKETDESK_ISSUER: http://keycloak:8080/realms/ticketdesk
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TICKETDESK_AUDIENCE: assistant-orchestrator
     volumes:
-      - ./data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    network_mode: host
-    privileged: true
-    restart: always
+      - tickets-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
+    # start-dev is for local only. Production runs `start` with TLS and an
+    # external database.
     command: start-dev --import-realm
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
     volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  tickets-data:

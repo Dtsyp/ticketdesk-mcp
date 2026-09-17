@@ -1,0 +1,57 @@
+stages:
+  - lint
+  - test
+  - security
+  - build
+
+default:
+  image: python:3.12-slim
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .cache/pip
+  before_script:
+    - pip install --no-cache-dir -r requirements-dev.txt
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+lint:
+  stage: lint
+  script:
+    - ruff check .
+
+test:
+  stage: test
+  script:
+    - pytest -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+bandit:
+  stage: security
+  script:
+    - bandit -r auth.py storage.py server.py
+
+pip-audit:
+  stage: security
+  script:
+    - pip-audit -r requirements.txt
+  # Advisory: a new CVE should surface but not wedge every unrelated pipeline.
+  allow_failure: true
+
+build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script: []
+  script:
+    - /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'

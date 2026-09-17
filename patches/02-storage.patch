@@ -1,0 +1,156 @@
+--- a/storage.py
++++ b/storage.py
+@@ -1,26 +1,69 @@
+ import json
++import os
+ import re
++import threading
++from datetime import UTC, datetime
+ from pathlib import Path
+ 
++# Ticket ids are opaque handles like "T-1001". Constraining them keeps a hostile
++# id from turning into a path segment that walks out of the data directory.
++_TICKET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
++
++
++def _utcnow() -> str:
++    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
++
+ 
+ class TicketStore:
+     def __init__(self, root: Path):
+-        self.root = Path(root)
++        self.root = Path(root).resolve()
+         self.tickets_dir = self.root / "tickets"
+         self.attachments_dir = self.root / "attachments"
++        # Serialises read-modify-write on ticket files within one process. Not a
++        # cross-process lock - a multi-worker deployment needs a real store.
++        self._write_lock = threading.Lock()
++
++    # --- path safety ---
++
++    def _ticket_path(self, ticket_id: str) -> Path:
++        if not _TICKET_ID_RE.match(ticket_id):
++            raise ValueError(f"invalid ticket id: {ticket_id!r}")
++        return self.tickets_dir / f"{ticket_id}.json"
++
++    def _attachment_path(self, ticket_id: str, filename: str) -> Path:
++        if not _TICKET_ID_RE.match(ticket_id):
++            raise ValueError(f"invalid ticket id: {ticket_id!r}")
++        if (
++            filename in ("", ".", "..")
++            or "/" in filename
++            or "\\" in filename
++            or ".." in filename
++            or filename != Path(filename).name
++        ):
++            raise ValueError(f"invalid attachment name: {filename!r}")
++        base = (self.attachments_dir / ticket_id).resolve()
++        path = (base / filename).resolve()
++        if path.parent != base:
++            raise ValueError(f"attachment path escapes base: {filename!r}")
++        return path
++
++    # --- reads ---
+ 
+     def get(self, ticket_id: str):
+-        path = self.tickets_dir / f"{ticket_id}.json"
++        path = self._ticket_path(ticket_id)
+         if not path.exists():
+             return None
+-        with open(path) as f:
++        with open(path, encoding="utf-8") as f:
+             return json.load(f)
+ 
+-    def search(self, query: str, status=None, assignee=None):
++    def search(self, query: str, status=None, assignee=None, limit: int = 100):
++        # Plain case-insensitive substring match. The previous version compiled
++        # the query as a regex, which meant a crafted pattern could hang the
++        # process (ReDoS) and an invalid one raised straight to a 500.
++        needle = query.casefold()
+         results = []
+-        pattern = re.compile(query)
+-        for p in self.tickets_dir.glob("*.json"):
+-            with open(p) as f:
++        for p in sorted(self.tickets_dir.glob("*.json")):
++            with open(p, encoding="utf-8") as f:
+                 t = json.load(f)
+             if status and t.get("status") != status:
+                 continue
+@@ -29,29 +72,57 @@
+             haystack = t.get("subject", "") + " " + " ".join(
+                 c.get("body", "") for c in t.get("comments", [])
+             )
+-            if pattern.search(haystack):
++            if needle in haystack.casefold():
+                 results.append(t)
++                if len(results) >= limit:
++                    break
+         return results
+ 
++    def read_attachment(self, ticket_id: str, filename: str) -> str:
++        path = self._attachment_path(ticket_id, filename)
++        raw = path.read_bytes()
++        try:
++            return raw.decode("utf-8")
++        except UnicodeDecodeError as e:
++            # Attachments are surfaced as text; refuse binaries loudly rather
++            # than handing back mojibake the way errors="replace" used to.
++            raise ValueError(f"attachment is not utf-8 text: {filename}") from e
++
++    # --- writes ---
++
+     def add_comment(self, ticket_id: str, author: str, body: str):
+-        path = self.tickets_dir / f"{ticket_id}.json"
+-        with open(path) as f:
+-            t = json.load(f)
+-        t.setdefault("comments", []).append({"author": author, "body": body})
+-        with open(path, "w") as f:
+-            json.dump(t, f, indent=2, ensure_ascii=False)
+-        return t
++        with self._write_lock:
++            path = self._ticket_path(ticket_id)
++            t = self._load(path)
++            t.setdefault("comments", []).append(
++                {"author": author, "body": body, "at": _utcnow()}
++            )
++            t["updated_at"] = _utcnow()
++            self._atomic_write(path, t)
++            return t
+ 
+     def close(self, ticket_id: str, reason: str):
+-        path = self.tickets_dir / f"{ticket_id}.json"
+-        with open(path) as f:
+-            t = json.load(f)
+-        t["status"] = "closed"
+-        t["close_reason"] = reason
+-        with open(path, "w") as f:
+-            json.dump(t, f, indent=2, ensure_ascii=False)
+-        return t
++        with self._write_lock:
++            path = self._ticket_path(ticket_id)
++            t = self._load(path)
++            t["status"] = "closed"
++            t["close_reason"] = reason
++            t["updated_at"] = _utcnow()
++            self._atomic_write(path, t)
++            return t
+ 
+-    def read_attachment(self, ticket_id: str, filename: str) -> str:
+-        path = self.attachments_dir / ticket_id / filename
+-        return path.read_text(errors="replace")
++    # --- helpers ---
++
++    def _load(self, path: Path):
++        if not path.exists():
++            raise FileNotFoundError(path.name)
++        with open(path, encoding="utf-8") as f:
++            return json.load(f)
++
++    def _atomic_write(self, path: Path, data) -> None:
++        tmp = path.with_suffix(path.suffix + ".tmp")
++        with open(tmp, "w", encoding="utf-8") as f:
++            json.dump(data, f, indent=2, ensure_ascii=False)
++            f.flush()
++            os.fsync(f.fileno())
++        os.replace(tmp, path)
