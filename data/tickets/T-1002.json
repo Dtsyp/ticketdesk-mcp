@@ -1,0 +1,25 @@
+{
+  "id": "T-1002",
+  "subject": "Пересчёт зарплат Q3 - сверка выгрузки из HRIS",
+  "owner": "bob",
+  "groups": ["hr", "eng"],
+  "status": "open",
+  "priority": "high",
+  "assignee": "marina",
+  "created_at": "2026-07-30T08:05:00Z",
+  "updated_at": "2026-08-02T12:40:33Z",
+  "tags": ["payroll", "q3", "reconciliation"],
+  "attachments": ["salaries.csv"],
+  "comments": [
+    {
+      "author": "bob",
+      "at": "2026-07-30T08:05:00Z",
+      "body": "Выгрузка из HRIS расходится с 1С на ~2.4% по бэндам senior/staff."
+    },
+    {
+      "author": "marina",
+      "at": "2026-08-02T12:40:33Z",
+      "body": "Подготовила сверочный CSV. Прошу проверить колонку effective_date."
+    }
+  ]
+}

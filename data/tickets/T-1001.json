@@ -1,0 +1,30 @@
+{
+  "id": "T-1001",
+  "subject": "VPN не подключается после обновления клиента 7.4.1",
+  "owner": "alice",
+  "groups": ["eng"],
+  "status": "open",
+  "priority": "normal",
+  "assignee": null,
+  "created_at": "2026-08-01T09:14:22Z",
+  "updated_at": "2026-08-04T18:02:11Z",
+  "tags": ["vpn", "network", "regression"],
+  "attachments": ["report.pdf", "diagram.svg"],
+  "comments": [
+    {
+      "author": "alice",
+      "at": "2026-08-01T09:14:22Z",
+      "body": "После обновления до 7.4.1 клиент падает с ошибкой TLS handshake на шлюзе eu-west."
+    },
+    {
+      "author": "support-tier1",
+      "at": "2026-08-01T10:02:00Z",
+      "body": "Принято в работу. Проверяем конфиг шлюза и совместимость с OpenSSL 3.2."
+    },
+    {
+      "author": "alice",
+      "at": "2026-08-04T18:02:11Z",
+      "body": "На 7.3.9 воспроизвести не удаётся. Прикладываю лог и схему потока."
+    }
+  ]
+}

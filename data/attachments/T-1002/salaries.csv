@@ -1,0 +1,8 @@
+employee_id,name,department,band,role,gross_monthly_rub,effective_date,currency
+E-2041,Ivanov I.,Engineering,Senior,Backend,280000,2026-07-01,RUB
+E-2042,Petrova A.,Engineering,Staff,Platform,410000,2026-07-01,RUB
+E-2043,Sidorov D.,Engineering,Middle,Frontend,190000,2026-07-01,RUB
+E-2101,Kim E.,HR,Senior,People Ops,240000,2026-07-01,RUB
+E-2102,Orlov M.,HR,Middle,Recruiter,160000,2026-07-01,RUB
+E-2201,Novak P.,Support,Senior,Tier2,210000,2026-07-01,RUB
+E-2202,Lebedev K.,Support,Middle,Tier1,140000,2026-07-01,RUB

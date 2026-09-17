@@ -1,0 +1,6 @@
+mcp==1.9.4
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+PyJWT==2.10.1
+cryptography==43.0.3
+pytest==8.3.2

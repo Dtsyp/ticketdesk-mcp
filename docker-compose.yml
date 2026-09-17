@@ -1,0 +1,29 @@
+services:
+  mcp:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      TICKETDESK_DATA: /data
+      TICKETDESK_USER: alice
+      TICKETDESK_GROUPS: eng
+      TICKETDESK_JWKS_URL: http://keycloak:8080/realms/ticketdesk/protocol/openid-connect/certs
+      TICKETDESK_ISSUER: http://keycloak:8080/realms/ticketdesk
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
+    privileged: true
+    restart: always
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm.json

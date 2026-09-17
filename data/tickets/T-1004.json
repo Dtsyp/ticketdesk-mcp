@@ -1,0 +1,25 @@
+{
+  "id": "T-1004",
+  "subject": "Онбординг Elara K. - доступы и оборудование",
+  "owner": "carol",
+  "groups": ["hr"],
+  "status": "open",
+  "priority": "normal",
+  "assignee": "dmitry",
+  "created_at": "2026-08-05T10:14:00Z",
+  "updated_at": "2026-08-14T09:12:41Z",
+  "tags": ["onboarding", "access", "hardware"],
+  "attachments": ["notes.txt"],
+  "comments": [
+    {
+      "author": "carol",
+      "at": "2026-08-05T10:14:00Z",
+      "body": "Elara выходит 11 августа. Нужны доступы, ноутбук и бейдж."
+    },
+    {
+      "author": "dmitry",
+      "at": "2026-08-06T15:20:00Z",
+      "body": "Бейдж активирован, SSO работает. Ноутбук - на складе."
+    }
+  ]
+}

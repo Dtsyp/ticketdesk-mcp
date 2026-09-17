@@ -1,0 +1,171 @@
+{
+  "realm": "ticketdesk",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "employee",
+        "description": "Regular employee"
+      },
+      {
+        "name": "support",
+        "description": "Support engineer"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "eng",
+      "path": "/eng"
+    },
+    {
+      "name": "hr",
+      "path": "/hr"
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "tickets:read",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "tickets:write",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "assistant-orchestrator",
+      "name": "Assistant Orchestrator",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://orchestrator.local/callback"
+      ],
+      "webOrigins": [
+        "https://orchestrator.local"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "tickets:read"
+      ],
+      "optionalClientScopes": [
+        "tickets:write"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@corp.example",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Nguyen",
+      "groups": [
+        "/eng"
+      ],
+      "realmRoles": [
+        "employee"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-dev",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@corp.example",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Marley",
+      "groups": [
+        "/hr",
+        "/eng"
+      ],
+      "realmRoles": [
+        "employee"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-dev",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "email": "carol@corp.example",
+      "emailVerified": true,
+      "firstName": "Carol",
+      "lastName": "Ivanova",
+      "groups": [
+        "/hr"
+      ],
+      "realmRoles": [
+        "employee"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-dev",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dmitry",
+      "enabled": true,
+      "email": "dmitry@corp.example",
+      "emailVerified": true,
+      "firstName": "Dmitry",
+      "lastName": "Sokolov",
+      "groups": [
+        "/eng"
+      ],
+      "realmRoles": [
+        "employee",
+        "support"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dmitry-dev",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
